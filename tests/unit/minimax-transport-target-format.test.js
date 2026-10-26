@@ -9,10 +9,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   executeMock,
+  refreshWithRetryMock,
   translateRequestMock,
   handleNonStreamingResponseMock,
+  requestLoggerMock,
 } = vi.hoisted(() => ({
   executeMock: vi.fn(),
+  refreshWithRetryMock: vi.fn(),
   translateRequestMock: vi.fn((sourceFormat, targetFormat, model, body) => ({
     ...body,
     model,
@@ -20,6 +23,12 @@ const {
     _translatedTo: targetFormat,
   })),
   handleNonStreamingResponseMock: vi.fn(async () => ({ success: true })),
+  requestLoggerMock: {
+    logClientRawRequest: vi.fn(),
+    logRawRequest: vi.fn(),
+    logTargetRequest: vi.fn(),
+    logError: vi.fn(),
+  },
 }));
 
 vi.mock("../../open-sse/executors/index.js", () => ({
@@ -38,12 +47,7 @@ vi.mock("../../open-sse/handlers/chatCore/nonStreamingHandler.js", () => ({
 }));
 
 vi.mock("../../open-sse/utils/requestLogger.js", () => ({
-  createRequestLogger: vi.fn(async () => ({
-    logClientRawRequest: vi.fn(),
-    logRawRequest: vi.fn(),
-    logTargetRequest: vi.fn(),
-    logError: vi.fn(),
-  })),
+  createRequestLogger: vi.fn(async () => requestLoggerMock),
 }));
 
 vi.mock("../../open-sse/utils/clientDetector.js", () => ({
@@ -64,7 +68,7 @@ vi.mock("../../open-sse/utils/streamHandler.js", () => ({
 }));
 
 vi.mock("../../open-sse/services/tokenRefresh.js", () => ({
-  refreshWithRetry: vi.fn(),
+  refreshWithRetry: refreshWithRetryMock,
 }));
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
@@ -109,7 +113,10 @@ vi.mock("../../open-sse/handlers/chatCore/requestDetail.js", () => ({
 vi.mock("../../open-sse/utils/error.js", () => ({
   createErrorResult: vi.fn((status, message) => ({ success: false, status, error: message })),
   formatProviderError: vi.fn((error) => error.message),
-  parseUpstreamError: vi.fn(),
+  parseUpstreamError: vi.fn(async (response) => ({
+    statusCode: response.status,
+    message: (await response.json()).error,
+  })),
 }));
 
 vi.mock("@/lib/usageDb.js", () => ({
@@ -136,8 +143,11 @@ function makeOptions(body) {
 describe("MiniMax-M3 multi-transport routing", () => {
   beforeEach(() => {
     executeMock.mockReset();
+    refreshWithRetryMock.mockReset();
     translateRequestMock.mockClear();
     handleNonStreamingResponseMock.mockClear();
+    requestLoggerMock.logTargetRequest.mockClear();
+    requestLoggerMock.logError.mockClear();
     executeMock.mockResolvedValue({
       response: new Response("{}", {
         status: 200,
@@ -185,5 +195,78 @@ describe("MiniMax-M3 multi-transport routing", () => {
     expect(requestBody._translatedTo).toBe("openai");
     expect(requestBody).not.toHaveProperty("system");
     expect(executeMock.mock.calls[0][0].credentials.runtimeTransport.format).toBe("openai");
+  });
+
+  it("uses a failed retry's response and metadata instead of the original 401", async () => {
+    refreshWithRetryMock.mockResolvedValue({ accessToken: "new-token" });
+    executeMock
+      .mockResolvedValueOnce({
+        response: new Response(JSON.stringify({ error: "expired" }), { status: 401 }),
+        url: "https://old.example/v1/chat/completions",
+        headers: { authorization: "Bearer old-token" },
+        transformedBody: { attempt: "initial" },
+        responseFormat: "initial-format",
+      })
+      .mockResolvedValueOnce({
+        response: new Response(JSON.stringify({ error: "still denied" }), { status: 403 }),
+        url: "https://new.example/v1/messages",
+        headers: { authorization: "Bearer new-token", "x-retry": "1" },
+        transformedBody: { attempt: "retry" },
+        responseFormat: "retry-format",
+      });
+
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const result = await handleChatCore(makeOptions({
+      model: "minimax-cn/MiniMax-M3",
+      stream: false,
+      messages: [{ role: "user", content: "hello" }],
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(403);
+    expect(requestLoggerMock.logTargetRequest).toHaveBeenNthCalledWith(
+      2,
+      "https://new.example/v1/messages",
+      { authorization: "Bearer new-token", "x-retry": "1" },
+      { attempt: "retry" },
+    );
+    expect(requestLoggerMock.logError).toHaveBeenCalledWith(
+      expect.any(Error),
+      { attempt: "retry" },
+    );
+  });
+
+  it("passes a successful retry's response format and transformed request downstream", async () => {
+    refreshWithRetryMock.mockResolvedValue({ accessToken: "new-token" });
+    executeMock
+      .mockResolvedValueOnce({
+        response: new Response("{}", { status: 401 }),
+        url: "https://old.example/v1/chat/completions",
+        headers: { authorization: "Bearer old-token" },
+        transformedBody: { attempt: "initial" },
+        responseFormat: "initial-format",
+      })
+      .mockResolvedValueOnce({
+        response: new Response("{}", { status: 200 }),
+        url: "https://new.example/v1/messages",
+        headers: { authorization: "Bearer new-token" },
+        transformedBody: { attempt: "retry" },
+        responseFormat: "retry-format",
+      });
+
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    await handleChatCore(makeOptions({
+      model: "minimax-cn/MiniMax-M3",
+      stream: false,
+      messages: [{ role: "user", content: "hello" }],
+    }));
+
+    expect(handleNonStreamingResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerResponse: expect.any(Response),
+        finalBody: { attempt: "retry" },
+        targetFormat: "retry-format",
+      }),
+    );
   });
 });

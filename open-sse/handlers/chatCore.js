@@ -474,11 +474,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
             proxyOptions,
             providerOverrides,
           });
-          if (retryResult.response.ok) {
-            providerResponse = retryResult.response;
-            providerUrl = retryResult.url;
-            providerResponseFormat = retryResult.responseFormat || targetFormat;
-          }
+          // The retry is a new upstream attempt even when it also fails. Keep
+          // all response/request metadata from that attempt so error handling,
+          // diagnostics, and request details never describe the stale 401/403.
+          providerResponse = retryResult.response;
+          providerUrl = retryResult.url;
+          providerHeaders = retryResult.headers;
+          finalBody = retryResult.transformedBody;
+          providerResponseFormat = retryResult.responseFormat || targetFormat;
+          reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
         } catch { log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`); }
       } else {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);

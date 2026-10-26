@@ -83,6 +83,50 @@ describe("Schema migrations", () => {
     expect(aliases).toHaveLength(1);
   });
 
+  it("failed legacy import retries on the next startup", async () => {
+    fs.writeFileSync(path.join(tempDir, "db.json"), JSON.stringify({
+      apiKeys: [{ id: "bad", name: "missing-key" }],
+    }));
+
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    expect(db.all(`SELECT * FROM apiKeys`)).toHaveLength(0);
+    db.close?.();
+
+    // Fix the legacy input and simulate a process restart. The prior failed
+    // transaction must not make this schema-only DB look permanently migrated.
+    fs.writeFileSync(path.join(tempDir, "db.json"), JSON.stringify({
+      apiKeys: [{ id: "k1", key: "abc", name: "retried" }],
+    }));
+    delete global._dbAdapter;
+    vi.resetModules();
+
+    const { getAdapter: getAdapter2 } = await import("@/lib/db/driver.js");
+    const db2 = await getAdapter2();
+    expect(db2.get(`SELECT key FROM apiKeys WHERE id='k1'`).key).toBe("abc");
+  });
+
+  it("does not re-import successfully migrated legacy data after DB wipe", async () => {
+    fs.writeFileSync(path.join(tempDir, "db.json"), JSON.stringify({
+      apiKeys: [{ id: "k1", key: "abc", name: "imported" }],
+    }));
+
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    expect(db.all(`SELECT * FROM apiKeys`)).toHaveLength(1);
+    db.close?.();
+
+    for (const file of ["data.sqlite", "data.sqlite-wal", "data.sqlite-shm"]) {
+      fs.rmSync(path.join(tempDir, "db", file), { force: true });
+    }
+    delete global._dbAdapter;
+    vi.resetModules();
+
+    const { getAdapter: getAdapter2 } = await import("@/lib/db/driver.js");
+    const db2 = await getAdapter2();
+    expect(db2.all(`SELECT * FROM apiKeys`)).toHaveLength(0);
+  });
+
   it("auto-sync re-creates missing index when DB lacks it", async () => {
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();

@@ -5,6 +5,17 @@ const crypto = require("crypto");
 const { pathToFileURL } = require("url");
 
 const origCreate = http.createServer.bind(http);
+const DEFAULT_MAX_BODY_SIZE = 128 * 1024 * 1024;
+
+function parseBodySize(value) {
+  const match = String(value || "").trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/);
+  if (!match) return DEFAULT_MAX_BODY_SIZE;
+  const multiplier = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 }[match[2] || "b"];
+  const size = Number(match[1]) * multiplier;
+  return Number.isSafeInteger(size) && size >= 0 ? size : DEFAULT_MAX_BODY_SIZE;
+}
+
+const MAX_H2C_BODY_SIZE = parseBodySize(process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE || "128mb");
 
 // Per-process secret proving x-9r-real-ip was stamped below rather than sent by the client.
 // A bare `next start` / `next dev` never loads this file, so it cannot produce a matching
@@ -89,8 +100,13 @@ http.createServer = (...args) => {
       socket.destroy();
       return true;
     }
-    const chunks = [head];
-    let received = head.length;
+    if (contentLength > MAX_H2C_BODY_SIZE) {
+      socket.end("HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+      return true;
+    }
+    const initial = head.subarray(0, Math.min(head.length, contentLength));
+    const chunks = initial.length ? [initial] : [];
+    let received = initial.length;
     const serve = () => {
       // Replay the upgraded request through the existing HTTP/1.1 handler.
       const replay = new http.IncomingMessage(socket);
@@ -109,8 +125,10 @@ http.createServer = (...args) => {
     if (received >= contentLength) serve();
     else {
       socket.on("data", function readBody(chunk) {
-        chunks.push(chunk);
-        received += chunk.length;
+        const remaining = contentLength - received;
+        const bodyChunk = chunk.subarray(0, remaining);
+        if (bodyChunk.length) chunks.push(bodyChunk);
+        received += bodyChunk.length;
         if (received < contentLength) return;
         socket.off("data", readBody);
         serve();

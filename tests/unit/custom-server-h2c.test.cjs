@@ -63,3 +63,49 @@ test("serves h2c POST requests as HTTP/1.1", async () => {
     http.createServer = originalCreateServer;
   }
 });
+
+test("rejects h2c requests over the configured body limit", async () => {
+  const originalCreateServer = http.createServer;
+  delete require.cache[require.resolve("../../custom-server.js")];
+  require("../../custom-server.js");
+
+  const server = http.createServer(() => {
+    throw new Error("oversized request reached handler");
+  });
+  server.on("upgrade", (_req, socket) => socket.destroy());
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const port = server.address().port;
+    const response = await new Promise((resolve, reject) => {
+      const chunks = [];
+      const socket = net.createConnection({ host: "127.0.0.1", port }, () => {
+        socket.end([
+          "POST / HTTP/1.1",
+          `Host: 127.0.0.1:${port}`,
+          "Connection: Upgrade, HTTP2-Settings",
+          "Upgrade: h2c",
+          "HTTP2-Settings: AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA",
+          `Content-Length: ${128 * 1024 * 1024 + 1}`,
+          "",
+          "",
+        ].join("\r\n"));
+      });
+      socket.setTimeout(2_000, () => {
+        socket.destroy();
+        reject(new Error("oversized h2c response timed out"));
+      });
+      socket.on("data", (chunk) => chunks.push(chunk));
+      socket.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      socket.on("error", reject);
+    });
+    assert.match(response, /^HTTP\/1\.1 413 Payload Too Large\r\n/);
+    assert.match(response, /\r\nConnection: close\r\n/i);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    http.createServer = originalCreateServer;
+  }
+});

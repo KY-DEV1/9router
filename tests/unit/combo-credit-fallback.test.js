@@ -5,7 +5,9 @@ describe("combo credit fallback", () => {
   it.each([
     ["You have insufficient credits to make this request.", true],
     ["Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.", true],
-    ["Bad request", false],
+    // An unmatched 400 is request-scoped: another combo member may accept the
+    // same request, while the explicit credit rules above remain credential-scoped.
+    ["Bad request", true],
   ])("routes a 400 response correctly: %s", async (message, shouldContinue) => {
     const body = { messages: [{ role: "user", content: "Hello" }] };
     const models = ["cmc/deepseek/deepseek-v4-pro", "mistral/mistral-medium-latest"];

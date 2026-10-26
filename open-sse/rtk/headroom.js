@@ -1,6 +1,6 @@
 import { FORMATS } from "../translator/formats.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, COMMANDCODE_BLOCK, RESPONSES_ITEM } from "../translator/schema/index.js";
-import { HEADROOM_TOOL_OUTPUT_MAX_DEPTH } from "./constants.js";
+import { HEADROOM_TOOL_OUTPUT_MAX_DEPTH, MIN_COMPRESS_SIZE } from "./constants.js";
 import {
   openaiResponsesToOpenAIRequest,
   openaiToOpenAIResponsesRequest,
@@ -419,16 +419,31 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
   try {
     if (diagnostics) diagnostics.before = captureSizeSnapshot(body);
 
+    const unsafeResponsesInput = format === FORMATS.OPENAI_RESPONSES
+      && hasUnsafeResponsesInputForCompression(body);
     const toolOutputs = collectToolOutputText(body, format);
     if (toolOutputs) {
       if (!toolOutputs.messages.length) {
         setDiagnostic(diagnostics, "no eligible plain-text tool output");
         return null;
       }
+      // Large plain-text function outputs are projected and restored in place,
+      // so they remain safe even alongside native Responses protocol items.
+      // Do not make a proxy call for tiny results when the surrounding request
+      // contains tool/reasoning items that cannot be round-tripped safely.
+      if (unsafeResponsesInput && jsonBytes(toolOutputs.messages) < MIN_COMPRESS_SIZE) {
+        setDiagnostic(diagnostics, "skipped: openai-responses tool/reasoning input is not safe to compress");
+        return null;
+      }
       const data = await callCompress(url, toolOutputs.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data || !applyToolOutputText(toolOutputs, data.messages, diagnostics)) return null;
       if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
       return data;
+    }
+
+    if (unsafeResponsesInput) {
+      setDiagnostic(diagnostics, "skipped: openai-responses tool/reasoning input is not safe to compress");
+      return null;
     }
 
     // Keep Claude's documents, tool blocks and signatures in their native form.
@@ -450,10 +465,6 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
     // messages. Translate input -> OpenAI -> compress -> translate back to input so
     // body.input keeps the Responses contract (the proxy only understands OpenAI). (#1998)
     if (format === "openai-responses") {
-      if (hasUnsafeResponsesInputForCompression(body)) {
-        setDiagnostic(diagnostics, "skipped: openai-responses tool/reasoning input is not safe to compress");
-        return null;
-      }
       const oai = openaiResponsesToOpenAIRequest(model, body, false);
       if (!Array.isArray(oai?.messages)) {
         setDiagnostic(diagnostics, "openai-responses request did not translate to messages[]");

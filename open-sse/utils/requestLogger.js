@@ -69,25 +69,78 @@ function writeJsonFile(sessionPath, filename, data) {
   }
 }
 
-// Mask sensitive data in headers (DISABLED - keep full token for testing)
+const REDACTED_VALUE = "[REDACTED]";
+
+// Header names that commonly carry credentials or bearer/API tokens.
+function isSensitiveHeader(name) {
+  const normalized = String(name).toLowerCase().replace(/[_-]/g, "");
+  return normalized === "authorization"
+    || normalized === "proxyauthorization"
+    || normalized === "cookie"
+    || normalized === "setcookie"
+    || normalized === "xapikey"
+    || normalized.includes("token")
+    || normalized.includes("apikey");
+}
+
+function isSensitiveQueryParameter(name) {
+  const normalized = String(name).toLowerCase().replace(/[_-]/g, "");
+  return normalized.includes("token")
+    || normalized.includes("apikey")
+    || normalized.includes("authorization")
+    || normalized.includes("password")
+    || normalized.includes("secret")
+    || normalized.includes("credential")
+    || normalized === "key";
+}
+
+function redactUrl(value) {
+  if (typeof value !== "string" && !(value instanceof URL)) return value;
+
+  const input = String(value);
+  try {
+    const isAbsolute = /^[a-z][a-z\d+.-]*:/i.test(input);
+    const url = new URL(input, "http://logger.invalid");
+    if (url.username) url.username = REDACTED_VALUE;
+    if (url.password) url.password = REDACTED_VALUE;
+
+    for (const key of [...url.searchParams.keys()]) {
+      if (isSensitiveQueryParameter(key)) {
+        url.searchParams.set(key, REDACTED_VALUE);
+      }
+    }
+
+    if (isAbsolute) return url.toString();
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    // Fall back to conservative redaction rather than writing malformed URLs
+    // containing obvious userinfo or query credentials unchanged.
+    let redacted = input.replace(
+      /(\/\/)[^/?#@]+:[^/?#@]*@/g,
+      `$1${REDACTED_VALUE}:${REDACTED_VALUE}@`,
+    );
+    redacted = redacted.replace(
+      /([?&])([^=&#]+)=([^&#]*)/g,
+      (match, prefix, key) => isSensitiveQueryParameter(key)
+        ? `${prefix}${key}=${REDACTED_VALUE}`
+        : match,
+    );
+    return redacted;
+  }
+}
+
+// Mask sensitive data in headers before writing it to disk.
 function maskSensitiveHeaders(headers) {
   if (!headers) return {};
-  return { ...headers };
-  
-  // Old masking code (disabled):
-  // const masked = { ...headers };
-  // const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
-  // 
-  // for (const key of Object.keys(masked)) {
-  //   const lowerKey = key.toLowerCase();
-  //   if (sensitiveKeys.some(sk => lowerKey.includes(sk))) {
-  //     const value = masked[key];
-  //     if (value && value.length > 20) {
-  //       masked[key] = value.slice(0, 10) + "..." + value.slice(-5);
-  //     }
-  //   }
-  // }
-  // return masked;
+
+  const entries = typeof headers.entries === "function"
+    ? headers.entries()
+    : Object.entries(headers);
+  const masked = {};
+  for (const [key, value] of entries) {
+    masked[key] = isSensitiveHeader(key) ? REDACTED_VALUE : value;
+  }
+  return masked;
 }
 
 // No-op logger when logging is disabled
@@ -130,7 +183,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logClientRawRequest(endpoint, body, headers = {}) {
       writeJsonFile(sessionPath, "1_req_client.json", {
         timestamp: new Date().toISOString(),
-        endpoint,
+        endpoint: redactUrl(endpoint),
         headers: maskSensitiveHeaders(headers),
         body
       });
@@ -157,7 +210,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
     logTargetRequest(url, headers, body) {
       writeJsonFile(sessionPath, "4_req_target.json", {
         timestamp: new Date().toISOString(),
-        url,
+        url: redactUrl(url),
         headers: maskSensitiveHeaders(headers),
         body
       });
@@ -170,7 +223,7 @@ export async function createRequestLogger(sourceFormat, targetFormat, model) {
         timestamp: new Date().toISOString(),
         status,
         statusText,
-        headers: headers ? (typeof headers.entries === "function" ? Object.fromEntries(headers.entries()) : headers) : {},
+        headers: maskSensitiveHeaders(headers),
         body
       });
     },

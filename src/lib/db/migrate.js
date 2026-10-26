@@ -44,13 +44,18 @@ function readJsonSafe(file) {
 }
 
 function isFreshDb(adapter) {
-  // Table _meta may not exist yet on truly fresh DB
-  try {
-    const row = adapter.get(`SELECT COUNT(*) as c FROM _meta`);
-    return !row || row.c === 0;
-  } catch {
-    return true;
+  // Schema migrations stamp _meta before legacy import. Treat a schema-only
+  // database as fresh so a rolled-back import can retry on the next startup.
+  // The marker still prevents re-import after a successful import and DB wipe.
+  for (const table of Object.keys(TABLES)) {
+    if (table === "_meta") continue;
+    try {
+      if ((adapter.get(`SELECT COUNT(*) as c FROM ${table}`)?.c ?? 0) > 0) return false;
+    } catch {
+      // A missing table is consistent with a fresh database.
+    }
   }
+  return true;
 }
 
 // ─── Versioned migrations runner (skip-version safe) ─────────────────────
@@ -249,9 +254,6 @@ export async function runMigrationOnce(adapter) {
   // 2. Additive sync (auto add missing columns/indexes declared in TABLES)
   syncSchemaFromTables(adapter);
 
-  // Stamp the schema version we just reached so future boots skip re-backup.
-  setMetaSync(adapter, "backupSchemaVersion", SCHEMA_VERSION);
-
   // 3. One-time legacy JSON import (only if DB was fresh on entry)
   const alreadyImported = fs.existsSync(MIGRATED_MARKER);
   const legacyMain = readJsonSafe(LEGACY_FILES.main);
@@ -288,6 +290,10 @@ export async function runMigrationOnce(adapter) {
     console.log(`[DB][migrate] JSON → SQLite in ${Date.now() - t0}ms | legacy JSON kept at DATA_DIR | backup: ${backupDir}`);
     return;
   }
+
+  // Stamp only after a possible legacy import has completed. A failed import
+  // must leave no migration metadata that prevents retry on the next startup.
+  setMetaSync(adapter, "backupSchemaVersion", SCHEMA_VERSION);
 
   // Track app version for informational purposes only. App version bumps no
   // longer trigger a DB backup — only real schema changes (SCHEMA_VERSION) do.
