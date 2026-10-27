@@ -47,7 +47,7 @@ export default function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Overlay */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px] fade-in"
+        className="absolute inset-0 bg-[#101815]/55 backdrop-blur-sm fade-in"
         onClick={closeOnOverlay ? onClose : undefined}
       />
 
@@ -56,7 +56,7 @@ export default function Modal({
         className={cn(
           "relative w-full bg-surface",
           "border border-border-subtle",
-          "rounded-[14px] shadow-[var(--shadow-elev)]",
+          "rounded-[20px] shadow-[var(--shadow-elev)]",
           "fade-in",
           sizes[size],
           className
@@ -64,7 +64,7 @@ export default function Modal({
       >
         {/* Header */}
         {(title || showTrafficLights) && (
-          <div className="flex items-center justify-between p-2 border-b border-border-subtle">
+          <div className="flex items-center justify-between gap-4 rounded-t-[20px] bg-bg-alt/65 px-5 py-3 border-b border-border-subtle">
             <div className="flex items-center">
               {/* Traffic lights — desktop only */}
               {showTrafficLights && (
@@ -74,13 +74,13 @@ export default function Modal({
                       onClick={onClose}
                       aria-label="Close"
                       title="Close"
-                      className="w-4 h-4 rounded-full bg-[#FF5F56] hover:brightness-90 transition-all cursor-pointer flex items-center justify-center group/dot"
+                      className="w-3.5 h-3.5 rounded-full bg-brand-500 hover:brightness-90 transition-all cursor-pointer flex items-center justify-center group/dot"
                     >
                       <span className="text-[9px] font-bold text-white opacity-0 group-hover/dot:opacity-100 transition-opacity leading-none">✕</span>
                     </button>
                   </Tooltip>
-                  <div className="w-4 h-4 rounded-full bg-[#3a3a3a]/20 dark:bg-white/15 cursor-not-allowed" />
-                  <div className="w-4 h-4 rounded-full bg-[#3a3a3a]/20 dark:bg-white/15 cursor-not-allowed" />
+                  <div className="w-3.5 h-3.5 rounded-full bg-signal/80" />
+                  <div className="w-3.5 h-3.5 rounded-full bg-text-subtle/35" />
                 </div>
               )}
               {title && (

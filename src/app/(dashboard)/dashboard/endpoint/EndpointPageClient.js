@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
+import Link from "next/link";
 import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
@@ -729,16 +730,90 @@ export default function APIPageClient({ machineId }) {
   const currentEndpoint = baseUrl;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6 lg:gap-8">
+      {/* Dashboard overview */}
+      <section className="relative isolate overflow-hidden rounded-2xl border border-border-subtle bg-surface px-5 py-6 shadow-[var(--shadow-soft)] sm:px-8 sm:py-8">
+        <div aria-hidden="true" className="absolute -right-16 -top-24 -z-10 h-72 w-72 rounded-full bg-brand-500/12 blur-3xl" />
+        <div aria-hidden="true" className="absolute bottom-0 right-0 -z-10 h-40 w-2/3 bg-[radial-gradient(ellipse_at_bottom_right,rgba(229,106,74,0.08),transparent_68%)]" />
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-600 dark:text-brand-300">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-40" />
+                <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+              </span>
+              Gateway control center
+            </div>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-text-main sm:text-4xl">
+              Your AI gateway, under control.
+            </h1>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-text-muted sm:text-base">
+              One endpoint for your AI stack. Connect providers, manage access, and keep an eye on every route from here.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/dashboard/providers" className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-brand-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 active:scale-[0.98]">
+              <span className="material-symbols-outlined text-[18px]">add_link</span>
+              Manage providers
+            </Link>
+            <Link href="/dashboard/usage" className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] border border-border bg-surface px-4 text-sm font-semibold text-text-main transition hover:border-brand-500/40 hover:bg-surface-2 active:scale-[0.98]">
+              View usage
+              <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+            </Link>
+          </div>
+        </div>
+
+        <div className="mt-7 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-border-subtle bg-bg/75 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-text-muted">API keys</span>
+              <span className="material-symbols-outlined text-[18px] text-brand-500">key</span>
+            </div>
+            <p className="mt-2 text-2xl font-semibold tracking-tight text-text-main">{keys.filter((key) => key.isActive !== false).length}<span className="ml-1.5 text-sm font-medium text-text-muted">active</span></p>
+            <p className="mt-1 text-xs text-text-muted">{keys.length} total keys</p>
+          </div>
+          <div className="rounded-xl border border-border-subtle bg-bg/75 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-text-muted">Remote access</span>
+              <span className="material-symbols-outlined text-[18px] text-indigo-500">public</span>
+            </div>
+            <p className="mt-2 text-2xl font-semibold tracking-tight text-text-main">{Number(tunnelEnabled) + Number(tsEnabled)}<span className="ml-1.5 text-sm font-medium text-text-muted">active</span></p>
+            <p className="mt-1 text-xs text-text-muted">Tunnel and Tailscale links</p>
+          </div>
+          <div className="rounded-xl border border-border-subtle bg-bg/75 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-text-muted">API access</span>
+              <span className={`size-2.5 rounded-full ${requireApiKey ? "bg-emerald-500" : "bg-amber-500"}`} />
+            </div>
+            <p className="mt-2 text-2xl font-semibold tracking-tight text-text-main">{requireApiKey ? "Protected" : "Open access"}</p>
+            <p className="mt-1 text-xs text-text-muted">{requireApiKey ? "Requests need a valid key" : "API key check is turned off"}</p>
+          </div>
+        </div>
+      </section>
+
       {/* Endpoint Card */}
-      <Card>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">api</span>
-          API Endpoint
-        </h2>
+      <Card className="overflow-hidden" elev>
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-300">
+              <span className="material-symbols-outlined text-[22px]">api</span>
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold tracking-tight text-text-main">API endpoint</h2>
+                <span className="rounded-full border border-brand-500/20 bg-brand-500/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-300">Primary route</span>
+              </div>
+              <p className="mt-1 text-sm text-text-muted">Use this base URL in your apps and AI tools.</p>
+            </div>
+          </div>
+          <span className="hidden items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 sm:inline-flex">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            v1 ready
+          </span>
+        </div>
 
         {/* Endpoint rows */}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2.5">
           {/* Local */}
           <EndpointRow
             label="Local"
@@ -976,18 +1051,28 @@ export default function APIPageClient({ machineId }) {
       </Card>
 
       {/* API Keys */}
-      <Card id="require-api-key">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">vpn_key</span>
-            API Keys
-          </h2>
+      <Card id="require-api-key" elev>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-300">
+              <span className="material-symbols-outlined text-[22px]">vpn_key</span>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">API keys</h2>
+              <p className="mt-0.5 text-sm text-text-muted">Create and control credentials for your apps.</p>
+            </div>
+          </div>
+          <span className="rounded-full border border-border-subtle bg-bg px-2.5 py-1 text-xs font-medium text-text-muted">
+            {keys.length} {keys.length === 1 ? "key" : "keys"}
+          </span>
+          <div className="sm:ml-auto">
           <Button icon="add" onClick={() => setShowAddModal(true)}>
             Create Key
           </Button>
+          </div>
         </div>
 
-        <div className="flex items-center justify-between pb-4 mb-4 border-b border-border">
+        <div className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-border-subtle bg-bg/70 p-4">
           <div>
             <p className="font-medium">Require API key</p>
             <p className="text-sm text-text-muted">
@@ -1018,11 +1103,11 @@ export default function APIPageClient({ machineId }) {
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-2.5">
             {keys.map((key) => (
               <div
                 key={key.id}
-                className={`group flex items-start justify-between gap-3 py-3 border-b border-black/[0.03] dark:border-white/[0.03] last:border-b-0 ${key.isActive === false ? "opacity-60" : ""}`}
+                className={`group flex items-start justify-between gap-3 rounded-xl border border-border-subtle bg-bg/50 p-4 transition-colors hover:border-brand-500/25 ${key.isActive === false ? "opacity-60" : ""}`}
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{key.name}</p>

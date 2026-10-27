@@ -70,6 +70,13 @@ const getPageInfo = (pathname) => {
     }
   }
 
+  if (pathname.startsWith("/dashboard/playground"))
+    return {
+      title: "Playground",
+      description: "Test prompts against your configured models",
+      icon: "science",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/providers") && !pathname.includes("/media-providers"))
     return {
       title: "Providers",
@@ -227,7 +234,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   };
 
   return (
-    <header className="shrink-0 flex items-center justify-between gap-3 px-4 lg:px-8 pt-3 pb-2 border-b border-border-subtle bg-surface/60 backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none z-20">
+    <header className="router-header shrink-0 flex items-center justify-between gap-3 px-4 lg:px-8 py-2.5 border-b border-border-subtle bg-surface/75 backdrop-blur-xl z-20">
       {/* Mobile menu button */}
       <div className="flex items-center gap-3 lg:hidden shrink-0">
         {showMenuButton && (
@@ -242,6 +249,10 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
 
       {/* Page title with breadcrumbs */}
       <div className="flex flex-col min-w-0 flex-1">
+        <div className="hidden lg:flex items-center gap-2 mb-0.5 text-[9px] font-bold uppercase tracking-[0.22em] text-text-subtle">
+          <span className="size-1.5 rounded-full bg-brand-500" />
+          <span>9R / Routing console</span>
+        </div>
         {breadcrumbs.length > 0 ? (
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             {breadcrumbs.map((crumb, index) => (
@@ -286,8 +297,8 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
           <div>
             <div className="flex items-center gap-2">
               {icon && (
-                <span className="material-symbols-outlined text-primary text-xl lg:text-2xl">
-                  {icon}
+                <span className="router-heading-icon flex size-8 items-center justify-center rounded-xl bg-brand-500/10 text-primary lg:size-9">
+                  <span className="material-symbols-outlined text-[18px] lg:text-[20px]">{icon}</span>
                 </span>
               )}
               <h1 className="text-base lg:text-2xl font-semibold tracking-tight truncate">
@@ -304,10 +315,10 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
       </div>
 
       {/* Right actions */}
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0">
         {displayName && (loginMethod === "OIDC" || loginMethod === "SAML") && (
           <div
-            className="hidden sm:flex items-center max-w-[220px] px-3 py-1.5 rounded-full border border-border bg-surface/70 text-xs text-text-muted truncate"
+            className="hidden sm:flex items-center max-w-[220px] px-3 py-1.5 rounded-xl border border-border-subtle bg-bg-alt/70 text-xs text-text-muted truncate"
             title={displayName}
           >
             <span className="material-symbols-outlined text-[14px] mr-1.5 text-primary">person</span>
@@ -353,7 +364,7 @@ function HeaderSearch() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-8 pl-7 pr-7 rounded-lg border border-border bg-surface/60 text-sm focus:outline-none focus:border-primary/50 transition-colors"
+        className="w-full h-9 pl-8 pr-7 rounded-xl border border-border bg-surface text-sm shadow-sm focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-brand-500/15 transition-colors"
       />
       {query && (
         <button
